@@ -19,7 +19,7 @@ HTML_TEMPLATE = jinja2.Template(
   {%- if mode == 'vega-lite' %}
   <script type="text/javascript" src="{{ base_url }}/vega-lite@{{ vegalite_version }}"></script>
   {%- endif %}
-  <script type="text/javascript" src="{{ base_url }}/vega-embed@{{ vegaembed_version }}"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js"></script>
 {%- endif %}
 {%- if fullhtml %}
 {%- if requirejs %}
@@ -30,7 +30,7 @@ requirejs.config({
         "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
         "vega-lib": "{{ base_url }}/vega-lib?noext",
         "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
-        "vega-embed": "https://github.com/dwootton/vega-embed?noext",
+        "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js",
     }
 });
 </script>
@@ -46,7 +46,7 @@ requirejs.config({
             "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
             "vega-lib": "{{ base_url }}/vega-lib?noext",
             "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
-            "vega-embed": "https://github.com/dwootton/vega-embed?noext",
+            "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js",
         }
     });
     {% endif %}

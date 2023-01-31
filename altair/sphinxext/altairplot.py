@@ -78,6 +78,7 @@ VEGALITE_JS_URL_DEFAULT = "https://cdn.jsdelivr.net/npm/vega-lite@{}".format(
 VEGAEMBED_JS_URL_DEFAULT = "https://cdn.jsdelivr.net/npm/vega-embed@{}".format(
     alt.VEGAEMBED_VERSION
 )
+#
 
 
 VGL_TEMPLATE = jinja2.Template(
