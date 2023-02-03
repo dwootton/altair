@@ -30,7 +30,7 @@ requirejs.config({
         "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
         "vega-lib": "{{ base_url }}/vega-lib?noext",
         "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
-        "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js",
+        "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js?noext",
     }
 });
 </script>
@@ -46,7 +46,7 @@ requirejs.config({
             "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
             "vega-lib": "{{ base_url }}/vega-lib?noext",
             "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
-            "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js",
+            "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js?noext",
         }
     });
     {% endif %}
@@ -97,8 +97,11 @@ HTML_TEMPLATE_UNIVERSAL = jinja2.Template(
       "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
       "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js",
     };
-
-    function maybeLoadScript(lib, version) {
+    console.log('paths',paths);
+    function maybeLoadScript(lib, version)
+     
+      
+        {
       var key = `${lib.replace("-", "")}_version`;
       return (VEGA_DEBUG[key] == version) ?
         Promise.resolve(paths[lib]) :
