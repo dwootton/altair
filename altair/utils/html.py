@@ -95,9 +95,9 @@ HTML_TEMPLATE_UNIVERSAL = jinja2.Template(
       "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
       "vega-lib": "{{ base_url }}/vega-lib?noext",
       "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
-      "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js",
+      "vega-embed": "https://raw.githack.com/dwootton/vega-embed/85381f50503e92c0eb7568c5a8ecd839d700e7c1/build/vega-embed.js",
     };
-    console.log('paths',paths);
+    console.log('new paths updated',paths);
     function maybeLoadScript(lib, version)
      
       
