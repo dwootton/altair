@@ -1,3 +1,4 @@
 """Altair schema wrappers"""
-# flake8: noqa
+
+# ruff: noqa
 from .v5.schema import *

@@ -1,84 +1,64 @@
-1. Make certain your branch is in sync with head
+1. Make sure to have an environment set up with `hatch` installed. See `CONTRIBUTING.md`.
+   Remove any existing environments managed by `hatch` so that it will create new ones
+   with the latest dependencies when executing the commands further below:
    
-       $ git pull upstream master
-   
-2. Do a clean doc build:
+       hatch env prune
 
-       $ cd doc
-       $ make clean-all
-       $ make html
-       $ cd _build/html; python -m http.server
+2. Make certain your branch is in sync with head:
+ 
+       git pull upstream main
+
+3. Do a clean doc build:
+
+       hatch run doc:clean-all
+       hatch run doc:build-html
+       hatch run doc:serve
    
    Navigate to http://localhost:8000 and ensure it looks OK (particularly
    do a visual scan of the gallery thumbnails).
 
-3. Make sure changes.rst is up to date for the release: compare against PRs
-   merged since the last release & update top heading with release date.
-
-4. Update version to, e.g. 2.0.0
+4. Update version to, e.g. 5.0.0:
 
    - in ``altair/__init__.py``
-   - in ``doc/conf.py`` (two places)
+   - in ``doc/conf.py``
 
-5. Double-check that all vega-lite/vega/vega-embed versions are up-to-date:
-
-   - URLs in ``doc/conf.py``
-   - versions in ``altair/vegalite/v4/display.py``
-
-6. Commit change and push to master
+5. Commit change and push to main:
 
        git add . -u
-       git commit -m "MAINT: bump version to 2.0.0"
-       git push upstream master
+       git commit -m "chore: bump version to 5.0.0"
+       git push upstream main
 
-7. Tag the release:
+6. Tag the release:
 
-       git tag -a v2.0.0 -m "version 2.0.0 release"
-       git push upstream v2.0.0
+       git tag -a v5.0.0 -m "version 5.0.0 release"
+       git push upstream v5.0.0
 
-8. Build source & wheel distributions
+7. Build source & wheel distributions:
 
-       rm -r dist build  # clean old builds & distributions
-       python setup.py sdist  # create a source distribution
-       python setup.py bdist_wheel  # create a universal wheel
+       hatch clean  # clean old builds & distributions
+       hatch build  # create a source distribution and universal wheel
 
-9. publish to PyPI (Requires correct PyPI owner permissions)
+8. publish to PyPI (Requires correct PyPI owner permissions):
 
-       twine upload dist/*
+        hatch publish
 
-10. build and publish docs (Requires write-access to altair-viz/altair-viz.github.io)
+9. build and publish docs (Requires write-access to altair-viz/altair-viz.github.io):
 
-        cd doc
-        make clean-all
-        make html
-        bash sync_website.sh
+        hatch run doc:publish-clean-build
 
-11. update version to, e.g. 2.1.0dev
+10. update version to, e.g. 5.1.0dev:
 
     - in ``altair/__init__.py``
-    - in ``doc/conf.py`` (two places)
+    - in ``doc/conf.py``
 
-12. add a new changelog entry for the unreleased version:
-
-       Version 2.1.0 (unreleased)
-       --------------------------
-
-       Enhancements
-       ~~~~~~~~~~~~
-       Bug Fixes
-       ~~~~~~~~~
-       Backward-Incompatible Changes
-       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-13. Commit change and push to master
+11. Commit change and push to main:
 
         git add . -u
-        git commit -m "MAINT: bump version to 2.1.0dev"
-        git push upstream master
+        git commit -m "chore: bump version to 5.1.0dev"
+        git push upstream main
 
-14. Double-check that a conda-forge pull request is generated from the updated
+12. Double-check that a conda-forge pull request is generated from the updated
     pip package by the conda-forge bot (may take up to ~an hour):
     https://github.com/conda-forge/altair-feedstock/pulls
 
-15. Copy changes.rst section into release notes within
-    https://github.com/altair-viz/altair/releases/, and publish the release.
+13. Publish a new release in https://github.com/altair-viz/altair/releases/

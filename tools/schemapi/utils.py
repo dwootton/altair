@@ -1,36 +1,33 @@
 """Utilities for working with schemas"""
 
-import json
 import keyword
-import pkgutil
 import re
+import subprocess
 import textwrap
 import urllib
+from typing import Any, Dict, Final, Iterable, List, Optional, Union
 
-import jsonschema
+from .schemapi import _resolve_references as resolve_references
 
+EXCLUDE_KEYS: Final = ("definitions", "title", "description", "$schema", "id")
 
-EXCLUDE_KEYS = ("definitions", "title", "description", "$schema", "id")
-
-
-def load_metaschema():
-    schema = pkgutil.get_data("schemapi", "jsonschema-draft04.json")
-    schema = schema.decode()
-    return json.loads(schema)
-
-
-def resolve_references(schema, root=None):
-    """Resolve References within a JSON schema"""
-    resolver = jsonschema.RefResolver.from_schema(root or schema)
-    while "$ref" in schema:
-        with resolver.resolving(schema["$ref"]) as resolved:
-            schema = resolved
-    return schema
+jsonschema_to_python_types = {
+    "string": "str",
+    "number": "float",
+    "integer": "int",
+    "object": "dict",
+    "boolean": "bool",
+    "array": "list",
+    "null": "None",
+}
 
 
 def get_valid_identifier(
-    prop, replacement_character="", allow_unicode=False, url_decode=True
-):
+    prop: str,
+    replacement_character: str = "",
+    allow_unicode: bool = False,
+    url_decode: bool = True,
+) -> str:
     """Given a string property, generate a valid Python identifier
 
     Parameters
@@ -87,7 +84,7 @@ def get_valid_identifier(
     return valid
 
 
-def is_valid_identifier(var, allow_unicode=False):
+def is_valid_identifier(var: str, allow_unicode: bool = False):
     """Return true if var contains a valid Python identifier
 
     Parameters
@@ -102,18 +99,23 @@ def is_valid_identifier(var, allow_unicode=False):
     return is_valid and not keyword.iskeyword(var)
 
 
-class SchemaProperties(object):
+class SchemaProperties:
     """A wrapper for properties within a schema"""
 
-    def __init__(self, properties, schema, rootschema=None):
+    def __init__(
+        self,
+        properties: Dict[str, Any],
+        schema: dict,
+        rootschema: Optional[dict] = None,
+    ) -> None:
         self._properties = properties
         self._schema = schema
         self._rootschema = rootschema or schema
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self._properties)
 
-    def __dir__(self):
+    def __dir__(self) -> List[str]:
         return list(self._properties.keys())
 
     def __getattr__(self, attr):
@@ -141,29 +143,22 @@ class SchemaProperties(object):
         return (self[key] for key in self)
 
 
-class SchemaInfo(object):
+class SchemaInfo:
     """A wrapper for inspecting a JSON schema"""
 
-    def __init__(self, schema, rootschema=None, validate=False):
-        if hasattr(schema, "_schema"):
-            if hasattr(schema, "_rootschema"):
-                schema, rootschema = schema._schema, schema._rootschema
-            else:
-                schema, rootschema = schema._schema, schema._schema
-        elif not rootschema:
+    def __init__(
+        self, schema: Dict[str, Any], rootschema: Optional[Dict[str, Any]] = None
+    ) -> None:
+        if not rootschema:
             rootschema = schema
-        if validate:
-            metaschema = load_metaschema()
-            jsonschema.validate(schema, metaschema)
-            jsonschema.validate(rootschema, metaschema)
         self.raw_schema = schema
         self.rootschema = rootschema
         self.schema = resolve_references(schema, rootschema)
 
-    def child(self, schema):
+    def child(self, schema: dict) -> "SchemaInfo":
         return self.__class__(schema, rootschema=self.rootschema)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         keys = []
         for key in sorted(self.schema.keys()):
             val = self.schema[key]
@@ -178,169 +173,256 @@ class SchemaInfo(object):
         return "SchemaInfo({\n  " + "\n  ".join(keys) + "\n})"
 
     @property
-    def title(self):
+    def title(self) -> str:
         if self.is_reference():
             return get_valid_identifier(self.refname)
         else:
             return ""
 
-    @property
-    def short_description(self):
+    def get_python_type_representation(
+        self,
+        for_type_hints: bool = False,
+        altair_classes_prefix: Optional[str] = None,
+        return_as_str: bool = True,
+        additional_type_hints: Optional[List[str]] = None,
+    ) -> Union[str, List[str]]:
+        # This is a list of all types which can be used for the current SchemaInfo.
+        # This includes Altair classes, standard Python types, etc.
+        type_representations: List[str] = []
         if self.title:
-            # use RST syntax for generated sphinx docs
-            return ":class:`{}`".format(self.title)
-        else:
-            return self.medium_description
+            if for_type_hints:
+                # To keep type hints simple, we only use the SchemaBase class
+                # as the type hint for all classes which inherit from it.
+                class_names = ["SchemaBase"]
+                if self.title == "ExprRef":
+                    # In these cases, a value parameter is also always accepted.
+                    # We use the _Parameter to indicate this although this
+                    # protocol would also pass for selection parameters but
+                    # due to how the Parameter class is defined, it would be quite
+                    # complex to further differentiate between a value and
+                    # a selection parameter based on the type system (one could
+                    # try to check for the type of the Parameter.param attribute
+                    # but then we would need to write some overload signatures for
+                    # api.param).
+                    class_names.append("_Parameter")
+                if self.title == "ParameterExtent":
+                    class_names.append("_Parameter")
 
-    @property
-    def medium_description(self):
-        _simple_types = {
-            "string": "string",
-            "number": "float",
-            "integer": "integer",
-            "object": "mapping",
-            "boolean": "boolean",
-            "array": "list",
-            "null": "None",
-        }
-        if self.is_list():
-            return "[{0}]".format(
-                ", ".join(self.child(s).short_description for s in self.schema)
-            )
-        elif self.is_empty():
-            return "Any"
+                prefix = (
+                    "" if not altair_classes_prefix else altair_classes_prefix + "."
+                )
+                # If there is no prefix, it might be that the class is defined
+                # in the same script and potentially after this line -> We use
+                # deferred type annotations using quotation marks.
+                if not prefix:
+                    class_names = [f'"{n}"' for n in class_names]
+                else:
+                    class_names = [f"{prefix}{n}" for n in class_names]
+                type_representations.extend(class_names)
+            else:
+                # use RST syntax for generated sphinx docs
+                type_representations.append(rst_syntax_for_class(self.title))
+
+        if self.is_empty():
+            type_representations.append("Any")
         elif self.is_enum():
-            return "enum({})".format(", ".join(map(repr, self.enum)))
+            type_representations.append(
+                "Literal[{}]".format(", ".join(map(repr, self.enum)))
+            )
         elif self.is_anyOf():
-            return "anyOf({})".format(
-                ", ".join(s.short_description for s in self.anyOf)
+            type_representations.extend(
+                [
+                    s.get_python_type_representation(
+                        for_type_hints=for_type_hints,
+                        altair_classes_prefix=altair_classes_prefix,
+                        return_as_str=False,
+                    )
+                    for s in self.anyOf
+                ]
             )
-        elif self.is_oneOf():
-            return "oneOf({})".format(
-                ", ".join(s.short_description for s in self.oneOf)
-            )
-        elif self.is_allOf():
-            return "allOf({})".format(
-                ", ".join(s.short_description for s in self.allOf)
-            )
-        elif self.is_not():
-            return "not {}".format(self.not_.short_description)
         elif isinstance(self.type, list):
             options = []
             subschema = SchemaInfo(dict(**self.schema))
             for typ_ in self.type:
                 subschema.schema["type"] = typ_
-                options.append(subschema.short_description)
-            return "anyOf({})".format(", ".join(options))
+                options.append(
+                    subschema.get_python_type_representation(
+                        # We always use title if possible for nested objects
+                        for_type_hints=for_type_hints,
+                        altair_classes_prefix=altair_classes_prefix,
+                    )
+                )
+            type_representations.extend(options)
         elif self.is_object():
-            return "Mapping(required=[{}])".format(", ".join(self.required))
+            type_representations.append("dict")
         elif self.is_array():
-            return "List({})".format(self.child(self.items).short_description)
-        elif self.type in _simple_types:
-            return _simple_types[self.type]
-        elif not self.type:
-            import warnings
+            # A list is invariant in its type parameter. This means that e.g.
+            # List[str] is not a subtype of List[Union[core.FieldName, str]]
+            # and hence we would need to explicitly write out the combinations,
+            # so in this case:
+            # List[core.FieldName], List[str], List[core.FieldName, str]
+            # However, this can easily explode to too many combinations.
+            # Furthermore, we would also need to add additional entries
+            # for e.g. int wherever a float is accepted which would lead to very
+            # long code.
+            # As suggested in the mypy docs,
+            # https://mypy.readthedocs.io/en/stable/common_issues.html#variance,
+            # we revert to using Sequence which works as well for lists and also
+            # includes tuples which are also supported by the SchemaBase.to_dict
+            # method. However, it is not entirely accurate as some sequences
+            # such as e.g. a range are not supported by SchemaBase.to_dict but
+            # this tradeoff seems worth it.
+            type_representations.append(
+                "Sequence[{}]".format(
+                    self.child(self.items).get_python_type_representation(
+                        for_type_hints=for_type_hints,
+                        altair_classes_prefix=altair_classes_prefix,
+                    )
+                )
+            )
+        elif self.type in jsonschema_to_python_types:
+            type_representations.append(jsonschema_to_python_types[self.type])
+        else:
+            raise ValueError("No Python type representation available for this schema")
 
-            warnings.warn("no short_description for schema\n{}" "".format(self.schema))
-            return "any"
+        # Shorter types are usually the more relevant ones, e.g. `str` instead
+        # of `SchemaBase`. Output order from set is non-deterministic -> If
+        # types have same length names, order would be non-deterministic as it is
+        # returned from sort. Hence, we sort as well by type name as a tie-breaker,
+        # see https://docs.python.org/3.10/howto/sorting.html#sort-stability-and-complex-sorts
+        # for more infos.
+        type_representations = sorted(
+            # Using lower as we don't want to prefer uppercase such as "None" over
+            # "str"
+            set(flatten(type_representations)),
+            key=lambda x: x.lower(),
+        )  # Secondary sort
+        type_representations = sorted(
+            type_representations,
+            key=len,
+        )  # Primary sort
+        if additional_type_hints:
+            type_representations.extend(additional_type_hints)
+
+        if return_as_str:
+            type_representations_str = ", ".join(type_representations)
+            # If it's not for_type_hints but instead for the docstrings, we don't want
+            # to include Union as it just clutters the docstrings.
+            if len(type_representations) > 1 and for_type_hints:
+                type_representations_str = f"Union[{type_representations_str}]"
+            return type_representations_str
+        else:
+            return type_representations
 
     @property
-    def long_description(self):
-        # TODO
-        return "Long description including arguments and their types"
-
-    @property
-    def properties(self):
+    def properties(self) -> SchemaProperties:
         return SchemaProperties(
             self.schema.get("properties", {}), self.schema, self.rootschema
         )
 
     @property
-    def definitions(self):
+    def definitions(self) -> SchemaProperties:
         return SchemaProperties(
             self.schema.get("definitions", {}), self.schema, self.rootschema
         )
 
     @property
-    def required(self):
+    def required(self) -> list:
         return self.schema.get("required", [])
 
     @property
-    def patternProperties(self):
+    def patternProperties(self) -> dict:
         return self.schema.get("patternProperties", {})
 
     @property
-    def additionalProperties(self):
+    def additionalProperties(self) -> bool:
         return self.schema.get("additionalProperties", True)
 
     @property
-    def type(self):
+    def type(self) -> Optional[str]:
         return self.schema.get("type", None)
 
     @property
-    def anyOf(self):
+    def anyOf(self) -> List["SchemaInfo"]:
         return [self.child(s) for s in self.schema.get("anyOf", [])]
 
     @property
-    def oneOf(self):
+    def oneOf(self) -> List["SchemaInfo"]:
         return [self.child(s) for s in self.schema.get("oneOf", [])]
 
     @property
-    def allOf(self):
+    def allOf(self) -> List["SchemaInfo"]:
         return [self.child(s) for s in self.schema.get("allOf", [])]
 
     @property
-    def not_(self):
+    def not_(self) -> "SchemaInfo":
         return self.child(self.schema.get("not", {}))
 
     @property
-    def items(self):
+    def items(self) -> dict:
         return self.schema.get("items", {})
 
     @property
-    def enum(self):
+    def enum(self) -> list:
         return self.schema.get("enum", [])
 
     @property
-    def refname(self):
+    def refname(self) -> str:
         return self.raw_schema.get("$ref", "#/").split("/")[-1]
 
     @property
-    def ref(self):
+    def ref(self) -> Optional[str]:
         return self.raw_schema.get("$ref", None)
 
     @property
-    def description(self):
-        return self.raw_schema.get("description", self.schema.get("description", ""))
+    def description(self) -> str:
+        return self._get_description(include_sublevels=False)
 
-    def is_list(self):
-        return isinstance(self.schema, list)
+    @property
+    def deep_description(self) -> str:
+        return self._get_description(include_sublevels=True)
 
-    def is_reference(self):
+    def _get_description(self, include_sublevels: bool = False) -> str:
+        desc = self.raw_schema.get("description", self.schema.get("description", ""))
+        if not desc and include_sublevels:
+            for item in self.anyOf:
+                sub_desc = item._get_description(include_sublevels=False)
+                if desc and sub_desc:
+                    raise ValueError(
+                        "There are multiple potential descriptions which could"
+                        + " be used for the currently inspected schema. You'll need to"
+                        + " clarify which one is the correct one.\n"
+                        + str(self.schema)
+                    )
+                if sub_desc:
+                    desc = sub_desc
+        return desc
+
+    def is_reference(self) -> bool:
         return "$ref" in self.raw_schema
 
-    def is_enum(self):
+    def is_enum(self) -> bool:
         return "enum" in self.schema
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
         return not (set(self.schema.keys()) - set(EXCLUDE_KEYS))
 
-    def is_compound(self):
+    def is_compound(self) -> bool:
         return any(key in self.schema for key in ["anyOf", "allOf", "oneOf"])
 
-    def is_anyOf(self):
+    def is_anyOf(self) -> bool:
         return "anyOf" in self.schema
 
-    def is_allOf(self):
+    def is_allOf(self) -> bool:
         return "allOf" in self.schema
 
-    def is_oneOf(self):
+    def is_oneOf(self) -> bool:
         return "oneOf" in self.schema
 
-    def is_not(self):
+    def is_not(self) -> bool:
         return "not" in self.schema
 
-    def is_object(self):
+    def is_object(self) -> bool:
         if self.type == "object":
             return True
         elif self.type is not None:
@@ -355,54 +437,16 @@ class SchemaInfo(object):
         else:
             raise ValueError("Unclear whether schema.is_object() is True")
 
-    def is_value(self):
+    def is_value(self) -> bool:
         return not self.is_object()
 
-    def is_array(self):
+    def is_array(self) -> bool:
         return self.type == "array"
 
-    def schema_type(self):
-        if self.is_empty():
-            return "empty"
-        elif self.is_compound():
-            for key in ["anyOf", "oneOf", "allOf"]:
-                if key in self.schema:
-                    return key
-        elif self.is_object():
-            return "object"
-        elif self.is_array():
-            return "array"
-        elif self.is_value():
-            return "value"
-        else:
-            raise ValueError("Unknown type with keys {}".format(self.schema))
 
-    def property_name_map(self):
-        """
-        Return a mapping of schema property names to valid Python attribute names
-
-        Only properties which are not valid Python identifiers will be included in
-        the dictionary.
-        """
-        pairs = [(prop, get_valid_identifier(prop)) for prop in self.properties]
-        return {prop: val for prop, val in pairs if prop != val}
-
-
-def indent_arglist(args, indent_level, width=100, lstrip=True):
-    """Indent an argument list for use in generated code"""
-    wrapper = textwrap.TextWrapper(
-        width=width,
-        initial_indent=indent_level * " ",
-        subsequent_indent=indent_level * " ",
-        break_long_words=False,
-    )
-    wrapped = "\n".join(wrapper.wrap(", ".join(args)))
-    if lstrip:
-        wrapped = wrapped.lstrip()
-    return wrapped
-
-
-def indent_docstring(lines, indent_level, width=100, lstrip=True):
+def indent_docstring(
+    lines: List[str], indent_level: int, width: int = 100, lstrip=True
+) -> str:
     """Indent a docstring for use in generated code"""
     final_lines = []
 
@@ -428,12 +472,21 @@ def indent_docstring(lines, indent_level, width=100, lstrip=True):
                 drop_whitespace=True,
             )
             for line in stripped.split("\n"):
-                if line == "":
+                line_stripped = line.lstrip()
+                line_stripped = fix_docstring_issues(line_stripped)
+                if line_stripped == "":
                     final_lines.append("")
-                elif line.startswith("* "):
-                    final_lines.extend(list_wrapper.wrap(line[2:]))
+                elif line_stripped.startswith("* "):
+                    final_lines.extend(list_wrapper.wrap(line_stripped[2:]))
+                # Matches lines where an attribute is mentioned followed by the accepted
+                # types (lines starting with a character sequence that
+                # does not contain white spaces or '*' followed by ' : ').
+                # It therefore matches 'condition : anyOf(...' but not '**Notes** : ...'
+                # These lines should not be wrapped at all but appear on one line
+                elif re.match(r"[^\s*]+ : ", line_stripped):
+                    final_lines.append(indent * " " + line_stripped)
                 else:
-                    final_lines.extend(wrapper.wrap(line.lstrip()))
+                    final_lines.extend(wrapper.wrap(line_stripped))
 
         # If this is the last line, put in an indent
         elif i + 1 == len(lines):
@@ -453,3 +506,61 @@ def indent_docstring(lines, indent_level, width=100, lstrip=True):
     if lstrip:
         wrapped = wrapped.lstrip()
     return wrapped
+
+
+def fix_docstring_issues(docstring: str) -> str:
+    # All lists should start with '*' followed by a whitespace. Fixes the ones
+    # which either do not have a whitespace or/and start with '-' by first replacing
+    # "-" with "*" and then adding a whitespace where necessary
+    docstring = re.sub(
+        r"^-(?=[ `\"a-z])",
+        "*",
+        docstring,
+        flags=re.MULTILINE,
+    )
+    # Now add a whitespace where an asterisk is followed by one of the characters
+    # in the square brackets of the regex pattern
+    docstring = re.sub(
+        r"^\*(?=[`\"a-z])",
+        "* ",
+        docstring,
+        flags=re.MULTILINE,
+    )
+
+    # Links to the vega-lite documentation cannot be relative but instead need to
+    # contain the full URL.
+    docstring = docstring.replace(
+        "types#datetime", "https://vega.github.io/vega-lite/docs/datetime.html"
+    )
+    return docstring
+
+
+def rst_syntax_for_class(class_name: str) -> str:
+    return f":class:`{class_name}`"
+
+
+def flatten(container: Iterable) -> Iterable:
+    """Flatten arbitrarily flattened list
+
+    From https://stackoverflow.com/a/10824420
+    """
+    for i in container:
+        if isinstance(i, (list, tuple)):
+            for j in flatten(i):
+                yield j
+        else:
+            yield i
+
+
+def ruff_format_str(code: Union[str, List[str]]) -> str:
+    if isinstance(code, list):
+        code = "\n".join(code)
+
+    r = subprocess.run(
+        # Name of the file does not seem to matter but ruff requires one
+        ["ruff", "format", "--stdin-filename", "placeholder.py"],
+        input=code.encode(),
+        check=True,
+        capture_output=True,
+    )
+    return r.stdout.decode()
