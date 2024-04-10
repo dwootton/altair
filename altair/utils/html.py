@@ -30,7 +30,7 @@ requirejs.config({
         "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
         "vega-lib": "{{ base_url }}/vega-lib?noext",
         "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
-        "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js?noext",
+        "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed@altair-express/build/vega-embed.min.js?noext",
     }
 });
 </script>
