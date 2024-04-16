@@ -12,7 +12,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "altair"
+name = "altair_alx_alpha"
 authors = [{ name = "Vega-Altair Contributors" }]
 dependencies = [
     "typing_extensions>=4.0.1; python_version<\"3.11\"",
