@@ -28,7 +28,7 @@ HTML_TEMPLATE = jinja2.Template(
   {%- if mode == 'vega-lite' %}
   <script type="text/javascript" src="{{ base_url }}/vega-lite@{{ vegalite_version }}"></script>
   {%- endif %}
-  <script type="text/javascript" src="{{ base_url }}/vega-embed@{{ vegaembed_version }}"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/dwootton/vega-embed/build/vega-embed.min.js"></script>
 {%- endif %}
 {%- if fullhtml %}
 {%- if requirejs %}
@@ -39,7 +39,7 @@ requirejs.config({
         "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
         "vega-lib": "{{ base_url }}/vega-lib?noext",
         "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
-        "vega-embed": "{{ base_url }}/vega-embed@{{ vegaembed_version }}?noext",
+        "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed@altair-express/build/vega-embed.min.js?noext",
     }
 });
 </script>
@@ -55,7 +55,7 @@ requirejs.config({
             "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
             "vega-lib": "{{ base_url }}/vega-lib?noext",
             "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
-            "vega-embed": "{{ base_url }}/vega-embed@{{ vegaembed_version }}?noext",
+            "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed@altair-express/build/vega-embed.min.js?noext",
         }
     });
     {% endif %}
@@ -90,6 +90,7 @@ requirejs.config({
 )
 
 
+
 HTML_TEMPLATE_UNIVERSAL = jinja2.Template(
     """
 <style>
@@ -115,10 +116,13 @@ HTML_TEMPLATE_UNIVERSAL = jinja2.Template(
       "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
       "vega-lib": "{{ base_url }}/vega-lib?noext",
       "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
-      "vega-embed": "{{ base_url }}/vega-embed@{{ vegaembed_version }}?noext",
+      "vega-embed": "https://cdn.jsdelivr.net/gh/dwootton/vega-embed@altair-express/build/vega-embed.min.js?noext",
     };
-
-    function maybeLoadScript(lib, version) {
+    console.log('new paths updated',paths);
+    function maybeLoadScript(lib, version)
+     
+      
+        {
       var key = `${lib.replace("-", "")}_version`;
       return (VEGA_DEBUG[key] == version) ?
         Promise.resolve(paths[lib]) :
@@ -262,6 +266,7 @@ def spec_to_html(
         an HTML string for rendering the chart.
     """
     embed_options = embed_options or {}
+    embed_options['copySelection'] = True
     json_kwds = json_kwds or {}
 
     mode = embed_options.setdefault("mode", mode)
